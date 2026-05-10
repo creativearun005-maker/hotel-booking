@@ -18,7 +18,7 @@ import java.awt.Frame;
 import java.awt.Label;
 import java.util.ArrayList;
 import java.util.Scanner;
-
+import com.hotel.models.Room;
 /**
  * Handles all user commands and routes them to
  * the appropriate service.
@@ -224,39 +224,50 @@ public class CommandHandler {
             return;
         }
 
+        // extract guest name before try block so it's accessible in all catch blocks
+        StringBuilder nameBuilder = new StringBuilder();
+        for (int i = 2; i < parts.length - 2; i++) {
+            nameBuilder.append(parts[i]);
+            if (i < parts.length - 3) {
+                nameBuilder.append(" ");
+            }
+        }
+        String guestName = nameBuilder.toString();
+
         try {
             int roomNumber  = Integer.parseInt(parts[1]);
-            String checkIn  = parts[parts.length - 2]; // second last part is check in date
-            String checkOut = parts[parts.length - 1]; // last part is check out date
-
-            // everything between room number and dates is the guest name
-            // so no matter if someone name has many spaces like Arun Kumar Sharma Singh etc, all will be considered as name
-
-            StringBuilder nameBuilder = new StringBuilder();
-            for (int i = 2; i < parts.length - 2; i++) {
-                nameBuilder.append(parts[i]);
-                if (i < parts.length - 3) {
-                    nameBuilder.append(" ");
-                }
-            }
-            String guestName = nameBuilder.toString();
+            String checkIn  = parts[parts.length - 2];
+            String checkOut = parts[parts.length - 1];
 
             bookingService.bookRoom(roomNumber, guestName, checkIn, checkOut);
 
         } catch (NumberFormatException e) {
             System.out.println("Invalid input. Room number must be a number.");
+
         } catch (RoomNotAvailableException e) {
             System.out.println("Error: " + e.getMessage());
-            // extract guest name from parts for recommendation
-            StringBuilder nameBuilder = new StringBuilder();
-            for (int i = 2; i < parts.length - 2; i++) {
-                nameBuilder.append(parts[i]);
-                if (i < parts.length - 3) {
-                    nameBuilder.append(" ");
+            handleRoomNotAvailable(guestName, Integer.parseInt(parts[1]));
+
+        } catch (RoomNotFoundException e) {
+            System.out.println("Error: Room " + parts[1] + " does not exist in the system, please check available rooms.");
+            System.out.println("------------------------------");
+            roomService.displayAvailableRooms();
+
+            if (recommendationService.hasAvailableHotels()) {
+                System.out.println("Would you like us to recommend another hotel?");
+                System.out.println("[1] Yes Please");
+                System.out.println("[0] No Thank You");
+                System.out.print("Your choice: ");
+                String choice = scanner.nextLine().trim();
+                if (choice.equals("1")) {
+                    recommendationService.displayRecommendedHotels();
+                    handleHotelSelection(guestName);
+                } else {
+                    System.out.println("Thank you for visiting us. Have a great day!");
                 }
             }
-            handleRoomNotAvailable(nameBuilder.toString());
-        } catch (RoomNotFoundException | InvalidDateException | InvalidInputException e) {
+
+        } catch (InvalidDateException | InvalidInputException e) {
             System.out.println("Error: " + e.getMessage());
         }
     }
@@ -265,14 +276,32 @@ public class CommandHandler {
      * Handles the case when a room is not available.
      * Recommends alternative hotels to the customer.
      */
-    private void handleRoomNotAvailable(String guestName) {
+    private void handleRoomNotAvailable(String guestName, int bookedRoomNumber) {
+
+        // show available rooms excluding the attempted room
+        System.out.println("------------------------------");
+        System.out.println("Other Available Rooms in Our Hotel");
+        System.out.println("------------------------------");
+
+        boolean anyAvailable = false;
+        for (Room room : roomService.getAllRooms()) {
+            if (room.getRoomNumber() != bookedRoomNumber && room.isAvailable()) {
+                System.out.println(room.toString());
+                System.out.println("------------------------------");
+                anyAvailable = true;
+            }
+        }
+
+        if (!anyAvailable) {
+            System.out.println("No other rooms available.");
+            System.out.println("------------------------------");
+        }
 
         if (!recommendationService.hasAvailableHotels()) {
             System.out.println("Sorry, no alternative hotels are available at the moment.");
             return;
         }
 
-        System.out.println("------------------------------");
         System.out.println("Would you like us to recommend another hotel?");
         System.out.println("Your driver is ready to drop you there!");
         System.out.println("[1] Yes Please");
@@ -288,7 +317,6 @@ public class CommandHandler {
             System.out.println("Thank you for visiting us. Have a great day!");
         }
     }
-
     /**
      * Handles hotel selection after recommendation is shown.
      * Stores referral record when customer selects a hotel.
